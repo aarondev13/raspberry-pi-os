@@ -6,7 +6,7 @@
 # Raspberry Pi OS 1.2
 
 ## Project Overview
-* **Developer Age:** 12
+* **Developer Age:** 13
 * **Target Hardware:** Raspberry Pi 5 (Broadcom BCM2712, ARM64 Architecture)
 * **Language Stack:** Bare-metal Rust (`#![no_std]`), ARM64 Assembly
 

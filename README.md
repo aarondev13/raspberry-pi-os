@@ -2,7 +2,7 @@
 <img width="4032" height="3024" alt="1" src="https://github.com/user-attachments/assets/47f9341f-947a-44cf-b149-99e0bcafba93" />
 <img width="4032" height="3024" alt="2" src="https://github.com/user-attachments/assets/12ddbc76-923e-4a05-a7c8-055271d89bc6" />
 <img width="3024" height="4032" alt="3" src="https://github.com/user-attachments/assets/d7e9ccab-b9d7-4dc8-afc3-a00e4fcda68e" />
-
+This was my previous project i was using raspberry pi os (full). I felt it was not secure and, did not meet my needs of a actual app store. And the graphic interface wasn't the best. 
 # Raspberry Pi OS 1.2
 
 ### A Custom Bare-Metal Operating System for Raspberry Pi 5

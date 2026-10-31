@@ -1,7 +1,5 @@
 /target/
 *.elf
-*.bin
-*.img
 *.o
 *.a
 *.log

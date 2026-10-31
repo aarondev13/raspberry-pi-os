@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raspberry Pi OS 1.2 - Interactive Font Sandbox</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { color: #58a6ff; margin-bottom: 5px; }
+        p { color: #8b949e; margin-bottom: 20px; text-align: center; max-width: 600px; }
+        .container { display: flex; flex-direction: column; align-items: center; background: #161b22; padding: 20px; border-radius: 6px; border: 1px solid #30363d; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .grid { display: grid; grid-template-columns: repeat(8, 40px); grid-template-rows: repeat(8, 40px); gap: 4px; background: #21262d; padding: 10px; border-radius: 6px; margin-bottom: 20px; }
+        .cell { width: 40px; height: 40px; background: #4b0082; border-radius: 4px; cursor: pointer; border: 1px solid #30363d; transition: background 0.1s ease; }
+        .cell.active { background: #ffffff; box-shadow: 0 0 8px #ffffff; }
+        .output-box { width: 100%; max-width: 340px; background: #0d1117; border: 1px solid #30363d; padding: 12px; border-radius: 6px; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 13px; color: #79c0ff; white-space: pre-wrap; word-break: break-all; }
+        .btn-clear { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 15px; font-size: 13px; font-weight: 500; }
+        .btn-clear:hover { background: #30363d; border-color: #8b949e; }
+    </style>
+</head>
+<body>
+
+    <h1>Raspberry Pi OS 1.2</h1>
+    <p>Interactive Font Matrix Sandbox. Click grid squares to visually design character elements. Copy the resulting bare-metal byte definitions straight into your Rust source matrices.</p>
+
+    <div class="container">
+        <button class="btn-clear" onclick="clearGrid()">Clear Grid</button>
+        <div class="grid" id="fontGrid"></div>
+        <div class="output-box" id="codeOutput">Updating matrices...</div>
+    </div>
+
+    <script>
+        const grid = document.getElementById('fontGrid');
+        const output = document.getElementById('codeOutput');
+        
+        // Initialize an 8x8 flat array tracking active states
+        let cellsState = new Array(64).fill(false);
+
+        // Generate the visual grid layout
+        for (let i = 0; i < 64; i++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            cell.addEventListener('click', () => {
+                cellsState[i] = !cellsState[i];
+                cell.classList.toggle('active');
+                generateRustCode();
+            });
+            grid.appendChild(cell);
+        }
+
+        function clearGrid() {
+            cellsState.fill(false);
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('active'));
+            generateRustCode();
+        }
+
+        function generateRustCode() {
+            let lines = [];
+            for (let row = 0; row < 8; row++) {
+                let byteValue = 0;
+                for (let col = 0; col < 8; col++) {
+                    const index = (row * 8) + col;
+                    if (cellsState[index]) {
+                        // Flip the bit correlating to the columns positioning (MSB left-to-right)
+                        byteValue |= (0x80 >> col);
+                    }
+                }
+                // Convert byte into string representation formatting
+                let binaryStr = byteValue.toString(2).padStart(8, '0');
+                lines.push(`    0b${binaryStr},`);
+            }
+            
+            output.textContent = `// Paste directly into your font.rs map\ntable = [\n${lines.join('\n')}\n];`;
+        }
+
+        // Initialize output view
+        generateRustCode();
+    </script>
+</body>
+</html>

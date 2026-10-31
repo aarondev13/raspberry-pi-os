@@ -1,7 +1,7 @@
 <p align="center"
-<img width="31%" alt="1" src="https://github.com/user-attachments/assets/47f9341f-947a-44cf-b149-99e0bcafba93" />
-<img width="31%" alt="2" src="https://github.com/user-attachments/assets/12ddbc76-923e-4a05-a7c8-055271d89bc6" />
-<img width="31%" alt="3" src="https://github.com/user-attachments/assets/d7e9ccab-b9d7-4dc8-afc3-a00e4fcda68e" />
+<img src="https://github.com/user-attachments/assets/47f9341f-947a-44cf-b149-99e0bcafba93" height="200" style="margin-right: 10px;" />
+<img src="https://github.com/user-attachments/assets/12ddbc76-923e-4a05-a7c8-055271d89bc6" height="200" style="margin-right: 10px;" />
+<img src="https://github.com/user-attachments/assets/d7e9ccab-b9d7-4dc8-afc3-a00e4fcda68e" height="200" />
 </p>
 # Raspberry Pi OS 1.2
 

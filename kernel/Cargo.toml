@@ -8,4 +8,7 @@ build = "build.rs"
 panic = "abort"
 
 [profile.release]
-panic = "abort"
+opt-level = 3       # Focuses on full compilation so your Rust code isn't stripped out
+lto = true          # Enables Link-Time Optimization to eliminate true dead code
+codegen-units = 1   # Helps LTO optimize your code across files more effectively
+panic = "abort"     # Prevents heavy OS panic bloat from filling your binary

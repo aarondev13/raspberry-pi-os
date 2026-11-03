@@ -1,0 +1,13 @@
+name: Bare Metal Rust CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust target
+      run: rustup target add aarch64-unknown-none
+    - name: Build Kernel ELF
+      run: cargo build --release

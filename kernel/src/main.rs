@@ -33,7 +33,9 @@ fn uart_boot_marker() {
 
 #[no_mangle]
 pub extern "C" fn kernel_main(_device_tree: u64) -> ! {
+    loop {
     uart_boot_marker();
+    }
 
     loop {
         unsafe { asm!("isb", options(nomem, nostack, preserves_flags)) };

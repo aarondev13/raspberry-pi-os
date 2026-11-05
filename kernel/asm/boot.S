@@ -32,3 +32,17 @@ bss_done:
 halt:
     wfe
     b halt
+
+
+
+#[no_mangle]
+pub extern "C" fn kernel_main(_dtb: usize) -> ! {
+    uart_init();
+
+    uart_puts("kernel_main reached\r\n");
+
+    loop {
+        uart_puts(".");
+        delay();
+    }
+}

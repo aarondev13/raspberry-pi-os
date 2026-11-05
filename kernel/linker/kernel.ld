@@ -10,11 +10,16 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
-    . = ALIGN(0x1000);
+    .data : {
+        *(.data .data.*)
+    }
+
+    . = ALIGN(8);
     .bss (NOLOAD) : {
         __bss_start = .;
         *(.bss .bss.*)
         *(COMMON)
+        . = ALIGN(8);
         __bss_end = .;
     }
 

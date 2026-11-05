@@ -36,11 +36,16 @@ fn uart_boot_marker() {
         uart_write_byte(*byte);
     }
 }
+    
+fn configure_uart0_pins() {
+    // GPIO configuration will go here.
+}
 
 #[no_mangle]
 pub extern "C" fn kernel_main(_device_tree: u64) -> ! {
+    configure_uart0_pins();
     uart_boot_marker();
-
+    
     loop {
         unsafe { asm!("isb", options(nomem, nostack, preserves_flags)) };
     }

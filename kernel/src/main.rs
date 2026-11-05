@@ -14,6 +14,12 @@ const UART_DR: usize = 0x00;
 const UART_FR: usize = 0x18;
 const UART_FR_TXFF: u32 = 1 << 5;
 const UART_SPIN_LIMIT: usize = 1_000_000;
+// RP1 GPIO controller base address
+const RP1_GPIO_BASE: usize = 0x0000_001f_000d_0000;
+
+// GPIO function selection
+const GPIO_FUNC_MASK: u32 = 0x1f;
+const GPIO_FUNC_UART0: u32 = 4;
 
 fn uart_write_byte(byte: u8) {
     for _ in 0..UART_SPIN_LIMIT {

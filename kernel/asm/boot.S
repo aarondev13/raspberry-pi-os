@@ -36,20 +36,30 @@ clear_bss:
 
 bss_done:
     ldr x0, =page_table_l1
-    
-    ldr x1, =0x00000401
+
+    ldr x1, =0x00000000
+    ldr x2, =0x00000741
+    orr x1, x1, x2
     str x1, [x0, #0]
-    
-    ldr x1, =0x40000401
+
+    ldr x1, =0x40000000
+    ldr x2, =0x00000741
+    orr x1, x1, x2
     str x1, [x0, #8]
-    
-    ldr x1, =0x80000401
+
+    ldr x1, =0x80000000
+    ldr x2, =0x00000741
+    orr x1, x1, x2
     str x1, [x0, #16]
-    
-    ldr x1, =0xC0000401
+
+    ldr x1, =0xC0000000
+    ldr x2, =0x00000741
+    orr x1, x1, x2
     str x1, [x0, #24]
 
-    ldr x1, =0x1C00000401
+    ldr x1, =0x1C00000000
+    ldr x2, =0x00000401
+    orr x1, x1, x2
     str x1, [x0, #224]
 
     mrs x0, CurrentEL
@@ -61,7 +71,7 @@ bss_done:
     ldr x0, =page_table_l1
     msr ttbr0_el2, x0
 
-    ldr x0, =0x00000025
+    ldr x0, =0x0000ff04
     msr mair_el2, x0
 
     ldr x0, =0x80802520
@@ -80,7 +90,7 @@ bss_done:
     ldr x0, =page_table_l1
     msr ttbr0_el1, x0
 
-    ldr x0, =0x00000025
+    ldr x0, =0x0000ff04
     msr mair_el1, x0
 
     ldr x0, =0x10802520

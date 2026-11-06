@@ -5,45 +5,29 @@
 _start:
     mov x19, x0
 
+    mrs x0, MPIDR_EL1
+    and x0, x0, #0xff
+    cbnz x0, secondary_core
+
     mrs x0, CurrentEL
     lsr x0, x0, #2
     and x0, x0, #0x3
-
     cmp x0, #2
-    b.eq .L_setup_el2
-    cmp x0, #1
-    b.eq .L_setup_el1
-    b .L_cores_filter
+    b.ne .L_setup_mmu
 
-.L_setup_el2:
-    mrs x0, tcr_el2
-    orr x0, x0, #(1 << 16)
-    msr tcr_el2, x0
-    isb
-    b .L_cores_filter
-
-.L_setup_el1:
-    mrs x0, tcr_el1
-    orr x0, x0, #(1 << 16)
-    msr tcr_el1, x0
+    mrs x0, sctlr_el2
+    bic x0, x0, #(1 << 0)
+    bic x0, x0, #(1 << 2)
+    bic x0, x0, #(1 << 12)
+    msr sctlr_el2, x0
     isb
 
-.L_cores_filter:
-    mrs x0, MPIDR_EL1
-    and x0, x0, #0xff
-    cbz x0, primary_core
-
-secondary_core:
-    wfe
-    b secondary_core
-
-primary_core:
+.L_setup_mmu:
     ldr x0, =__stack_top
     mov sp, x0
 
     ldr x0, =__bss_start
     ldr x1, =__bss_end
-
 clear_bss:
     cmp x0, x1
     b.hs bss_done
@@ -51,10 +35,74 @@ clear_bss:
     b clear_bss
 
 bss_done:
-    mov x29, xzr
+    ldr x0, =page_table_l1
+    
+    ldr x1, =0x00000401
+    str x1, [x0, #0]
+    
+    ldr x1, =0x40000401
+    str x1, [x0, #8]
+    
+    ldr x1, =0x80000401
+    str x1, [x0, #16]
+    
+    ldr x1, =0xC0000401
+    str x1, [x0, #24]
+
+    ldr x1, =0x1C00000401
+    str x1, [x0, #224]
+
+    mrs x0, CurrentEL
+    lsr x0, x0, #2
+    and x0, x0, #0x3
+    cmp x0, #2
+    b.ne .L_mmu_el1
+
+    ldr x0, =page_table_l1
+    msr ttbr0_el2, x0
+
+    ldr x0, =0x00000025
+    msr mair_el2, x0
+
+    ldr x0, =0x80802520
+    msr tcr_el2, x0
+    isb
+
+    mrs x0, sctlr_el2
+    orr x0, x0, #(1 << 0)
+    orr x0, x0, #(1 << 2)
+    orr x0, x0, #(1 << 12)
+    msr sctlr_el2, x0
+    isb
+    b .L_jump_kernel
+
+.L_mmu_el1:
+    ldr x0, =page_table_l1
+    msr ttbr0_el1, x0
+
+    ldr x0, =0x00000025
+    msr mair_el1, x0
+
+    ldr x0, =0x10802520
+    msr tcr_el1, x0
+    isb
+
+    mrs x0, sctlr_el1
+    orr x0, x0, #(1 << 0)
+    orr x0, x0, #(1 << 2)
+    orr x0, x0, #(1 << 12)
+    msr sctlr_el1, x0
+    isb
+
+.L_jump_kernel:
     mov x0, x19
     bl kernel_main
 
-halt:
+secondary_core:
     wfe
-    b halt
+    b secondary_core
+
+.section .bss.page_tables, "aw", @nobits
+.align 12
+page_table_l1:
+    .zero 4096

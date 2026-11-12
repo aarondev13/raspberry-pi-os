@@ -48,15 +48,21 @@ bss_done:
     orr x1, x1, x2
     str x1, [x0, #0]
 
-    // 0x40000000 - 0x7FFFFFFF: Normal Cacheable RAM (0x745) for QEMU virt RAM & DTB
+        // 0x00000000 - 0x3FFFFFFF: EL1 RW Executable Normal Cacheable RAM (0x705)
+    ldr x1, =0x00000000
+    ldr x2, =0x00000705
+    orr x1, x1, x2
+    str x1, [x0, #0]
+
+    // 0x40000000 - 0x7FFFFFFF: EL1 RW Executable Normal Cacheable RAM (0x705)
     ldr x1, =0x40000000
-    ldr x2, =0x00000745
+    ldr x2, =0x00000705
     orr x1, x1, x2
     str x1, [x0, #8]
 
-    // 0x80000000 - 0xBFFFFFFF: Normal Cacheable RAM (0x745)
+    // 0x80000000 - 0xBFFFFFFF: EL1 RW Executable Normal Cacheable RAM (0x705)
     ldr x1, =0x80000000
-    ldr x2, =0x00000745
+    ldr x2, =0x00000705
     orr x1, x1, x2
     str x1, [x0, #16]
 

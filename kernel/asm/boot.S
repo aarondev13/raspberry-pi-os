@@ -4,15 +4,6 @@
 
 _start:
     mov x19, x0
-    // Instant hardware test: write '!' directly to RP1 UART0 before MMU turns on!
-    ldr x1, =0x1c00030000
-    mov w2, #'!'
-    str w2, [x1]
-    ldr x1, =0x1f00030000
-    mov w2, #'@'
-    str w2, [x1]
-
-
     mrs x0, MPIDR_EL1
     and x0, x0, #0xff
     cbnz x0, secondary_core

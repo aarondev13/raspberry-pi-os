@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
+[dependencies]
+font8x8 = { version = "0.3", default-features = false }
+
 [profile.dev]
 panic = "abort"
 
 [profile.release]
-opt-level = 3       # Focuses on full compilation so your Rust code isn't stripped out
-lto = true          # Enables Link-Time Optimization to eliminate true dead code
-codegen-units = 1   # Helps LTO optimize your code across files more effectively
-panic = "abort"     # Prevents heavy OS panic bloat from filling your binary
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

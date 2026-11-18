@@ -155,6 +155,7 @@ const CURSOR_W: usize = 12;
 const CURSOR_H: usize = 16;
 const MOUSE_STEP: isize = 12;
 
+// 0 = Transparent, 1 = Black Outline, 2 = White Fill
 const CURSOR_SPRITE: [[u8; CURSOR_W]; CURSOR_H] = [,
  ,
  ,

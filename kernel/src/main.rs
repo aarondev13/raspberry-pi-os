@@ -1,3 +1,4 @@
+cat << 'EOF' > src/main.rs
 #![no_std]
 #![no_main]
 
@@ -7,9 +8,7 @@ use core::{
     ptr::{addr_of_mut, read_volatile, write_volatile},
 };
 
-// --- RP1 Peripherals at 0x1F_0000_0000 (Mapped in boot.S at entry #992) ---
 const RP1_BASE: usize = 0x0000_001f_0000_0000;
-
 const RP1_UART0_BASE: usize = RP1_BASE + 0x0003_0000;
 const UART_DR: usize = 0x00;
 const UART_FR: usize = 0x18;
@@ -28,18 +27,15 @@ const UART_CR_RXE: u32 = 1 << 9;
 
 const IO_BANK0_BASE: usize = RP1_BASE + 0x000d_0000;
 const PADS_BANK0_BASE: usize = RP1_BASE + 0x000f_0000;
-
 const PAD_IE: u32 = 1 << 6;
 const PAD_DRIVE_4MA: u32 = 1 << 4;
 const PAD_SCHMITT: u32 = 1 << 1;
 const FUNCSEL_UART: u32 = 4;
 
-// --- VideoCore Mailbox Constants (Mapped in boot.S at 0x10_0000_0000) ---
 const MBOX_BASE: usize = 0x0000_0010_7c01_3880;
 const MBOX_READ: usize = MBOX_BASE + 0x00;
 const MBOX_STATUS: usize = MBOX_BASE + 0x18;
 const MBOX_WRITE: usize = MBOX_BASE + 0x20;
-
 const MBOX_FULL: u32 = 0x8000_0000;
 const MBOX_EMPTY: u32 = 0x4000_0000;
 const MBOX_CH_PROP: u32 = 8;
@@ -47,7 +43,6 @@ const MBOX_CH_PROP: u32 = 8;
 const SCREEN_W: usize = 1920;
 const SCREEN_H: usize = 1080;
 
-// --- 64-byte Cache-Line Aligned Mailbox Buffer ---
 #[repr(C, align(64))]
 struct FbMailboxMsg {
     size: u32,
@@ -121,7 +116,6 @@ static mut CONSOLE: HdmiConsole = HdmiConsole {
     cursor_y: 16,
 };
 
-// --- Pixel Editor Constants & State ---
 const GRID_COLS: usize = 16;
 const GRID_ROWS: usize = 16;
 const BOX_SIZE: usize = 40;
@@ -130,14 +124,14 @@ const GRID_OFFSET_Y: usize = 200;
 const PALETTE_Y: usize = GRID_OFFSET_Y + GRID_ROWS * BOX_SIZE + 24;
 
 const PALETTE: [u32; 8] = [
-    0x0000_0000, // 1: Black (Eraser)
-    0x00FF_FFFF, // 2: White
-    0x00FF_0000, // 3: Red
-    0x0000_FF00, // 4: Green
-    0x0000_00FF, // 5: Blue
-    0x00FF_FF00, // 6: Yellow
-    0x0000_FFFF, // 7: Cyan
-    0x00FF_00FF, // 8: Magenta
+    0x0000_0000,
+    0x00FF_FFFF,
+    0x00FF_0000,
+    0x0000_FF00,
+    0x0000_00FF,
+    0x00FF_FF00,
+    0x0000_FFFF,
+    0x00FF_00FF,
 ];
 
 struct PixelEditor {
@@ -150,7 +144,10 @@ static mut EDITOR: PixelEditor = PixelEditor {
     selected_color: 2,
 };
 
-// Each row packs 12 pixels (2 bits per pixel: 0=Transparent, 1=Black, 2=White)
+const CURSOR_W: usize = 12;
+const CURSOR_H: usize = 16;
+const MOUSE_STEP: isize = 12;
+
 const CURSOR_ROWS: [u32; CURSOR_H] = [
     0x00000001,
     0x00000009,
@@ -175,6 +172,12 @@ fn cursor_pixel(row: usize, col: usize) -> u8 {
     ((CURSOR_ROWS[row] >> (col * 2)) & 0x3) as u8
 }
 
+struct MouseState {
+    x: usize,
+    y: usize,
+    visible: bool,
+    save_under: [[u32; CURSOR_W]; CURSOR_H],
+}
 
 static mut MOUSE: MouseState = MouseState {
     x: GRID_OFFSET_X + 20,
@@ -183,7 +186,6 @@ static mut MOUSE: MouseState = MouseState {
     save_under: [[0; CURSOR_W]; CURSOR_H],
 };
 
-// --- D-Cache Maintenance Helpers ---
 unsafe fn dcache_clean_invalidate_range(start: usize, len: usize) {
     let line_size = 64usize;
     let mut addr = start & !(line_size - 1);
@@ -282,7 +284,7 @@ unsafe fn mouse_hide() {
             if MOUSE.x + col >= SCREEN_W {
                 break;
             }
-            if CURSOR_SPRITE[row][col] != 0 {
+            if cursor_pixel(row, col) != 0 {
                 write_volatile(row_ptr.add(col), MOUSE.save_under[row][col]);
             }
         }
@@ -306,7 +308,7 @@ unsafe fn mouse_show() {
                 break;
             }
             MOUSE.save_under[row][col] = read_volatile(row_ptr.add(col));
-            match CURSOR_SPRITE[row][col] {
+            match cursor_pixel(row, col) {
                 1 => write_volatile(row_ptr.add(col), 0x0000_0000),
                 2 => write_volatile(row_ptr.add(col), 0x00FF_FFFF),
                 _ => {}
@@ -365,11 +367,12 @@ unsafe fn draw_palette_bar() {
             0x0044_4444
         };
         fb_fill_rect(bx, PALETTE_Y, BOX_SIZE, BOX_SIZE, border);
-fb_fill_rect(bx + 4, PALETTE_Y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
+        fb_fill_rect(bx + 4, PALETTE_Y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
+    }
 }
-}
+
 unsafe fn draw_entire_grid() {
-mouse_hide();
+    mouse_hide();
 for r in 0..GRID_ROWS {
 for c in 0..GRID_COLS {
 draw_pixel_box(c, r);

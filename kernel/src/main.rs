@@ -268,26 +268,7 @@ fn hdmi_init() {
             if actual_h > 0 {
                 CONSOLE.height = actual_h as usize;
             }
-            if pitch_bytes > 0 {
-                CONSOLE.pitch_pixels = (pitch_bytes / 4) as usize;
-            }
-
-            // Center the 16x16 grid on whatever resolution the monitor negotiated
-            let grid_w = GRID_COLS * BOX_SIZE;
-            let grid_h = GRID_ROWS * BOX_SIZE;
-            EDITOR.grid_x = CONSOLE.width.saturating_sub(grid_w) / 2;
-            EDITOR.grid_y = CONSOLE.height.saturating_sub(grid_h + 80) / 2;
-            EDITOR.palette_y = EDITOR.grid_y + grid_h + 24;
-            MOUSE.x = EDITOR.grid_x + 20;
-            MOUSE.y = EDITOR.grid_y + 20;
-
-            // Clear screen to black so any dark-blue boot color is wiped
-            fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
-        }
-    }
-}
-
-unsafe fn mouse_hide() {
+            {
     if !MOUSE.visible || CONSOLE.fb.is_null() {
         return;
     }

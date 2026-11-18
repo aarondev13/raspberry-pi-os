@@ -3,7 +3,6 @@
 
 use core::{
     arch::asm,
-    mem::size_of,
     panic::PanicInfo,
     ptr::{addr_of_mut, read_volatile, write_volatile},
 };
@@ -15,25 +14,15 @@ const RP1_BASE: usize = 0x0000_001c_0000_0000;
 const RP1_UART0_BASE: usize = RP1_BASE + 0x0003_0000;
 const UART_DR: usize = 0x00;
 const UART_FR: usize = 0x18;
-const UART_IBRD: usize = 0x24;
-const UART_FBRD: usize = 0x28;
 const UART_LCRH: usize = 0x2c;
 const UART_CR: usize = 0x30;
 
 const UART_FR_RXFE: u32 = 1 << 4;
 const UART_FR_TXFF: u32 = 1 << 5;
-const UART_LCRH_FEN: u32 = 1 << 4;
 const UART_LCRH_WLEN_8BIT: u32 = 3 << 5;
 const UART_CR_UARTEN: u32 = 1 << 0;
 const UART_CR_TXE: u32 = 1 << 8;
 const UART_CR_RXE: u32 = 1 << 9;
-
-const IO_BANK0_BASE: usize = RP1_BASE + 0x000d_0000;
-const PADS_BANK0_BASE: usize = RP1_BASE + 0x000f_0000;
-const PAD_IE: u32 = 1 << 6;
-const PAD_DRIVE_4MA: u32 = 1 << 4;
-const PAD_SCHMITT: u32 = 1 << 1;
-const FUNCSEL_UART: u32 = 4;
 
 const MBOX_BASE: usize = 0x0000_0010_7c01_3880;
 const MBOX_READ: usize = MBOX_BASE + 0x00;
@@ -43,8 +32,8 @@ const MBOX_FULL: u32 = 0x8000_0000;
 const MBOX_EMPTY: u32 = 0x4000_0000;
 const MBOX_CH_PROP: u32 = 8;
 
-const SCREEN_W: usize = 1920;
-const SCREEN_H: usize = 1080;
+const REQ_W: u32 = 1920;
+const REQ_H: u32 = 1080;
 
 #[repr(C, align(64))]
 struct FbMailboxMsg {
@@ -82,13 +71,13 @@ static mut MBOX_BUF: FbMailboxMsg = FbMailboxMsg {
     phys_tag: 0x0004_8003,
     phys_buf_size: 8,
     phys_req_size: 8,
-    phys_w: SCREEN_W as u32,
-    phys_h: SCREEN_H as u32,
+    phys_w: REQ_W,
+    phys_h: REQ_H,
     virt_tag: 0x0004_8004,
     virt_buf_size: 8,
     virt_req_size: 8,
-    virt_w: SCREEN_W as u32,
-    virt_h: SCREEN_H as u32,
+    virt_w: REQ_W,
+    virt_h: REQ_H,
     depth_tag: 0x0004_8005,
     depth_buf_size: 4,
     depth_req_size: 4,
@@ -107,6 +96,8 @@ static mut MBOX_BUF: FbMailboxMsg = FbMailboxMsg {
 
 struct HdmiConsole {
     fb: FbPtr,
+    width: usize,
+    height: usize,
     pitch_pixels: usize,
     cursor_x: usize,
     cursor_y: usize,
@@ -114,7 +105,9 @@ struct HdmiConsole {
 
 static mut CONSOLE: HdmiConsole = HdmiConsole {
     fb: core::ptr::null_mut(),
-    pitch_pixels: SCREEN_W,
+    width: REQ_W as usize,
+    height: REQ_H as usize,
+    pitch_pixels: REQ_W as usize,
     cursor_x: 16,
     cursor_y: 16,
 };
@@ -122,9 +115,6 @@ static mut CONSOLE: HdmiConsole = HdmiConsole {
 const GRID_COLS: usize = 16;
 const GRID_ROWS: usize = 16;
 const BOX_SIZE: usize = 40;
-const GRID_OFFSET_X: usize = 640;
-const GRID_OFFSET_Y: usize = 200;
-const PALETTE_Y: usize = GRID_OFFSET_Y + GRID_ROWS * BOX_SIZE + 24;
 
 const PALETTE: [u32; 8] = [
     0x0000_0000,
@@ -140,11 +130,17 @@ const PALETTE: [u32; 8] = [
 struct PixelEditor {
     cells: [[usize; GRID_COLS]; GRID_ROWS],
     selected_color: usize,
+    grid_x: usize,
+    grid_y: usize,
+    palette_y: usize,
 }
 
 static mut EDITOR: PixelEditor = PixelEditor {
     cells: [[0; GRID_COLS]; GRID_ROWS],
     selected_color: 2,
+    grid_x: 640,
+    grid_y: 200,
+    palette_y: 864,
 };
 
 const CURSOR_W: usize = 12;
@@ -183,8 +179,8 @@ struct MouseState {
 }
 
 static mut MOUSE: MouseState = MouseState {
-    x: GRID_OFFSET_X + 20,
-    y: GRID_OFFSET_Y + 20,
+    x: 660,
+    y: 220,
     visible: false,
     save_under: [[0; CURSOR_W]; CURSOR_H],
 };
@@ -211,26 +207,10 @@ unsafe fn dcache_clean_range(start: usize, len: usize) {
     asm!("dsb sy", options(nostack));
 }
 
-unsafe fn gpio_set_func(pin: usize, funcsel: u32) {
-    let pad_reg = (PADS_BANK0_BASE + 0x04 + (pin * 4)) as *mut u32;
-    write_volatile(pad_reg, PAD_IE | PAD_DRIVE_4MA | PAD_SCHMITT);
-
-    let ctrl_reg = (IO_BANK0_BASE + 0x04 + (pin * 8)) as *mut u32;
-    write_volatile(ctrl_reg, funcsel);
-}
-
 fn uart_init() {
     unsafe {
-        gpio_set_func(14, FUNCSEL_UART);
-        gpio_set_func(15, FUNCSEL_UART);
-
         write_volatile((RP1_UART0_BASE + UART_CR) as *mut u32, 0);
-        write_volatile((RP1_UART0_BASE + UART_IBRD) as *mut u32, 26);
-        write_volatile((RP1_UART0_BASE + UART_FBRD) as *mut u32, 3);
-        write_volatile(
-            (RP1_UART0_BASE + UART_LCRH) as *mut u32,
-            UART_LCRH_WLEN_8BIT | UART_LCRH_FEN,
-        );
+        write_volatile((RP1_UART0_BASE + UART_LCRH) as *mut u32, UART_LCRH_WLEN_8BIT);
         write_volatile(
             (RP1_UART0_BASE + UART_CR) as *mut u32,
             UART_CR_UARTEN | UART_CR_TXE | UART_CR_RXE,
@@ -241,7 +221,7 @@ fn uart_init() {
 fn hdmi_init() {
     let msg_ptr = addr_of_mut!(MBOX_BUF);
     let msg_addr = msg_ptr as usize;
-    let msg_len = size_of::<FbMailboxMsg>();
+    let msg_len = 104usize;
 
     unsafe {
         dcache_clean_invalidate_range(msg_addr, msg_len);
@@ -262,13 +242,45 @@ fn hdmi_init() {
         let code = read_volatile(&(*msg_ptr).code);
         let fb_addr = read_volatile(&(*msg_ptr).fb_addr);
         let pitch_bytes = read_volatile(&(*msg_ptr).pitch_bytes);
+        let actual_w = read_volatile(&(*msg_ptr).phys_w);
+        let actual_h = read_volatile(&(*msg_ptr).phys_h);
+
+        uart_write_uart_only("[HDMI] MBOX code=");
+        uart_write_hex32(code);
+        uart_write_uart_only(" fb=");
+        uart_write_hex32(fb_addr);
+        uart_write_uart_only(" pitch=");
+        uart_write_hex32(pitch_bytes);
+        uart_write_uart_only(" w=");
+        uart_write_hex32(actual_w);
+        uart_write_uart_only(" h=");
+        uart_write_hex32(actual_h);
+        uart_write_uart_only("\r\n");
 
         if code == 0x8000_0000 && fb_addr != 0 {
             let phys_fb = (fb_addr & 0x3FFF_FFFF) as FbPtr;
             CONSOLE.fb = phys_fb;
+            if actual_w > 0 {
+                CONSOLE.width = actual_w as usize;
+            }
+            if actual_h > 0 {
+                CONSOLE.height = actual_h as usize;
+            }
             if pitch_bytes > 0 {
                 CONSOLE.pitch_pixels = (pitch_bytes / 4) as usize;
             }
+
+            // Center the 16x16 grid on whatever resolution the monitor negotiated
+            let grid_w = GRID_COLS * BOX_SIZE;
+            let grid_h = GRID_ROWS * BOX_SIZE;
+            EDITOR.grid_x = CONSOLE.width.saturating_sub(grid_w) / 2;
+            EDITOR.grid_y = CONSOLE.height.saturating_sub(grid_h + 80) / 2;
+            EDITOR.palette_y = EDITOR.grid_y + grid_h + 24;
+            MOUSE.x = EDITOR.grid_x + 20;
+            MOUSE.y = EDITOR.grid_y + 20;
+
+            // Clear screen to black so any dark-blue boot color is wiped
+            fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
         }
     }
 }
@@ -279,12 +291,12 @@ unsafe fn mouse_hide() {
     }
     for row in 0..CURSOR_H {
         let py = MOUSE.y + row;
-        if py >= SCREEN_H {
+        if py >= CONSOLE.height {
             break;
         }
         let row_ptr = CONSOLE.fb.add(py * CONSOLE.pitch_pixels + MOUSE.x);
         for col in 0..CURSOR_W {
-            if MOUSE.x + col >= SCREEN_W {
+            if MOUSE.x + col >= CONSOLE.width {
                 break;
             }
             if cursor_pixel(row, col) != 0 {
@@ -302,12 +314,12 @@ unsafe fn mouse_show() {
     }
     for row in 0..CURSOR_H {
         let py = MOUSE.y + row;
-        if py >= SCREEN_H {
+        if py >= CONSOLE.height {
             break;
         }
         let row_ptr = CONSOLE.fb.add(py * CONSOLE.pitch_pixels + MOUSE.x);
         for col in 0..CURSOR_W {
-            if MOUSE.x + col >= SCREEN_W {
+            if MOUSE.x + col >= CONSOLE.width {
                 break;
             }
             MOUSE.save_under[row][col] = read_volatile(row_ptr.add(col));
@@ -324,8 +336,8 @@ unsafe fn mouse_show() {
 
 unsafe fn mouse_move(dx: isize, dy: isize) {
     mouse_hide();
-    let max_x = (SCREEN_W - CURSOR_W) as isize;
-    let max_y = (SCREEN_H - CURSOR_H) as isize;
+    let max_x = CONSOLE.width.saturating_sub(CURSOR_W) as isize;
+    let max_y = CONSOLE.height.saturating_sub(CURSOR_H) as isize;
     MOUSE.x = (MOUSE.x as isize + dx).clamp(0, max_x) as usize;
     MOUSE.y = (MOUSE.y as isize + dy).clamp(0, max_y) as usize;
     mouse_show();
@@ -337,12 +349,12 @@ unsafe fn fb_fill_rect(x: usize, y: usize, w: usize, h: usize, color: u32) {
     }
     for row in 0..h {
         let py = y + row;
-        if py >= SCREEN_H {
+        if py >= CONSOLE.height {
             break;
         }
         let row_ptr = CONSOLE.fb.add(py * CONSOLE.pitch_pixels + x);
         for col in 0..w {
-            if x + col >= SCREEN_W {
+            if x + col >= CONSOLE.width {
                 break;
             }
             write_volatile(row_ptr.add(col), color);
@@ -352,31 +364,28 @@ unsafe fn fb_fill_rect(x: usize, y: usize, w: usize, h: usize, color: u32) {
 }
 
 unsafe fn draw_pixel_box(col: usize, row: usize) {
-    let px = GRID_OFFSET_X + col * BOX_SIZE;
-    let py = GRID_OFFSET_Y + row * BOX_SIZE;
+    let px = EDITOR.grid_x + col * BOX_SIZE;
+    let py = EDITOR.grid_y + row * BOX_SIZE;
     let color_idx = EDITOR.cells[row][col];
     let fill_color = PALETTE[color_idx];
 
     fb_fill_rect(px, py, BOX_SIZE, BOX_SIZE, 0x0033_3333);
     fb_fill_rect(px + 2, py + 2, BOX_SIZE - 4, BOX_SIZE - 4, fill_color);
 }
-
 unsafe fn draw_palette_bar() {
-    for (i, &color) in PALETTE.iter().enumerate() {
-        let bx = GRID_OFFSET_X + i * (BOX_SIZE + 8);
-        let border = if EDITOR.selected_color == i {
-            0x00FF_FFFF
-        } else {
-            0x0044_4444
-        };
-        fb_fill_rect(bx, PALETTE_Y, BOX_SIZE, BOX_SIZE, border);
-        fb_fill_rect(bx + 4, PALETTE_Y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
-    }
+for (i, &color) in PALETTE.iter().enumerate() {
+let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
+let border = if EDITOR.selected_color == i {
+0x00FF_FFFF
+} else {
+0x0044_4444
+};
+fb_fill_rect(bx, EDITOR.palette_y, BOX_SIZE, BOX_SIZE, border);
+fb_fill_rect(bx + 4, EDITOR.palette_y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
 }
-
+}
 unsafe fn draw_entire_grid() {
-    mouse_hide();
-
+mouse_hide();
 for r in 0..GRID_ROWS {
 for c in 0..GRID_COLS {
 draw_pixel_box(c, r);
@@ -390,13 +399,13 @@ let mx = MOUSE.x;
 let my = MOUSE.y;
 let grid_w = GRID_COLS * BOX_SIZE;
 let grid_h = GRID_ROWS * BOX_SIZE;
-if mx >= GRID_OFFSET_X
-&& mx < GRID_OFFSET_X + grid_w
-&& my >= GRID_OFFSET_Y
-&& my < GRID_OFFSET_Y + grid_h
+if mx >= EDITOR.grid_x
+&& mx < EDITOR.grid_x + grid_w
+&& my >= EDITOR.grid_y
+&& my < EDITOR.grid_y + grid_h
 {
-let col = (mx - GRID_OFFSET_X) / BOX_SIZE;
-let row = (my - GRID_OFFSET_Y) / BOX_SIZE;
+let col = (mx - EDITOR.grid_x) / BOX_SIZE;
+let row = (my - EDITOR.grid_y) / BOX_SIZE;
 mouse_hide();
 if EDITOR.cells[row][col] == EDITOR.selected_color {
 EDITOR.cells[row][col] = 0;
@@ -407,9 +416,9 @@ draw_pixel_box(col, row);
 mouse_show();
 return;
 }
-if my >= PALETTE_Y && my < PALETTE_Y + BOX_SIZE {
+if my >= EDITOR.palette_y && my < EDITOR.palette_y + BOX_SIZE {
 for i in 0..PALETTE.len() {
-let bx = GRID_OFFSET_X + i * (BOX_SIZE + 8);
+let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
 if mx >= bx && mx < bx + BOX_SIZE {
 mouse_hide();
 EDITOR.selected_color = i;
@@ -477,7 +486,7 @@ return;
 if c == b'\n' {
 CONSOLE.cursor_x = 16;
 CONSOLE.cursor_y += 16;
-if CONSOLE.cursor_y + 16 >= SCREEN_H {
+if CONSOLE.cursor_y + 16 >= CONSOLE.height {
 CONSOLE.cursor_y = 16;
 }
 return;
@@ -505,10 +514,10 @@ let row_ptr2 = CONSOLE.fb.add((CONSOLE.cursor_y + row * 2 + 1) * CONSOLE.pitch_p
 dcache_clean_range(row_ptr2 as usize, 16 * 4);
 }
 CONSOLE.cursor_x += 16;
-if CONSOLE.cursor_x + 16 >= SCREEN_W {
+if CONSOLE.cursor_x + 16 >= CONSOLE.width {
 CONSOLE.cursor_x = 16;
 CONSOLE.cursor_y += 16;
-if CONSOLE.cursor_y + 16 >= SCREEN_H {
+if CONSOLE.cursor_y + 16 >= CONSOLE.height {
 CONSOLE.cursor_y = 16;
 }
 }
@@ -546,7 +555,7 @@ Some((read_volatile((RP1_UART0_BASE + UART_DR) as *const u32) & 0xFF) as u8)
 #[no_mangle]
 pub extern "C" fn kernel_main(_device_tree: u64) -> ! {
 uart_init();
-uart_write_str("\r\n[BOOT] RP1 UART0 Online at 0x1F_0003_0000!\r\n");
+uart_write_str("\r\n[BOOT] RP1 UART0 Online at 0x1C_0003_0000!\r\n");
 hdmi_init();
 uart_write_str("--- RPi5 Pixel Editor + Mouse Ready ---\r\n");
 uart_write_str("Move: w/a/s/d | Click: Space | Color: 1-8 | Clear: c | Export: e\r\n");

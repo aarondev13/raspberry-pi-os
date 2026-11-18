@@ -259,39 +259,29 @@ fn hdmi_init() {
         uart_write_hex32(actual_h);
         uart_write_uart_only("\r\n");
 
-        if code == 0x8000_0000 && fb_addr != 0 {
-            let phys_fb = (fb_addr & 0x3FFF_FFFF) as FbPtr;
-            CONSOLE.fb = phys_fb;
-            if actual_w > 0 {
-                CONSOLE.width = actual_w as usize;
-            }
-            if actual_h > 0 {
-                CONSOLE.height = actual_h as usize;
-            }
-            {
-    if !MOUSE.visible || CONSOLE.fb.is_null() {
-        return;
+fn hdmi_init() {
+    unsafe {
+        // RPi 5 bootloader already initialized FB0: 1920x1080, stride 7680 (1920 px), base 0x3f400000
+        CONSOLE.fb = 0x3f40_0000 as FbPtr;
+        CONSOLE.width = 1920;
+        CONSOLE.height = 1080;
+        CONSOLE.pitch_pixels = 1920;
+
+        let grid_w = GRID_COLS * BOX_SIZE;
+        let grid_h = GRID_ROWS * BOX_SIZE;
+        EDITOR.grid_x = (CONSOLE.width - grid_w) / 2;
+        EDITOR.grid_y = (CONSOLE.height - grid_h - 80) / 2;
+        EDITOR.palette_y = EDITOR.grid_y + grid_h + 24;
+        MOUSE.x = EDITOR.grid_x + 20;
+        MOUSE.y = EDITOR.grid_y + 20;
+
+        // Clear boot screen to black
+        fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
     }
-    for row in 0..CURSOR_H {
-        let py = MOUSE.y + row;
-        if py >= CONSOLE.height {
-            break;
-        }
-        let row_ptr = CONSOLE.fb.add(py * CONSOLE.pitch_pixels + MOUSE.x);
-        for col in 0..CURSOR_W {
-            if MOUSE.x + col >= CONSOLE.width {
-                break;
-            }
-            if cursor_pixel(row, col) != 0 {
-                write_volatile(row_ptr.add(col), MOUSE.save_under[row][col]);
-            }
-        }
-        dcache_clean_range(row_ptr as usize, CURSOR_W * 4);
-    }
-    MOUSE.visible = false;
 }
 
-unsafe fn mouse_show() {
+unsafe fn mouse_hide() {
+} {
     if MOUSE.visible || CONSOLE.fb.is_null() {
         return;
     }

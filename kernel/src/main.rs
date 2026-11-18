@@ -219,23 +219,25 @@ fn uart_init() {
 }
 
 fn hdmi_init() {
-    let msg_ptr = addr_of_mut!(MBOX_BUF);
-    let msg_addr = msg_ptr as usize;
-    let msg_len = 104usize;
-
     unsafe {
-        dcache_clean_invalidate_range(msg_addr, msg_len);
+        CONSOLE.fb = 0x3f40_0000 as FbPtr;
+        CONSOLE.width = 1920;
+        CONSOLE.height = 1080;
+        CONSOLE.pitch_pixels = 1920;
 
-        while (read_volatile(MBOX_STATUS as *const u32) & MBOX_FULL) != 0 {}
-        let packed = ((msg_addr as u32) & !0xF) | MBOX_CH_PROP;
-        write_volatile(MBOX_WRITE as *mut u32, packed);
+        let grid_w = GRID_COLS * BOX_SIZE;
+        let grid_h = GRID_ROWS * BOX_SIZE;
+        EDITOR.grid_x = (CONSOLE.width - grid_w) / 2;
+        EDITOR.grid_y = (CONSOLE.height - grid_h - 80) / 2;
+        EDITOR.palette_y = EDITOR.grid_y + grid_h + 24;
+        MOUSE.x = EDITOR.grid_x + 20;
+        MOUSE.y = EDITOR.grid_y + 20;
 
-        loop {
-            while (read_volatile(MBOX_STATUS as *const u32) & MBOX_EMPTY) != 0 {}
-            if read_volatile(MBOX_READ as *const u32) == packed {
-                break;
-            }
-        }
+        // Clear boot screen to black
+        fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
+    }
+}
+
 
         dcache_clean_invalidate_range(msg_addr, msg_len);
 

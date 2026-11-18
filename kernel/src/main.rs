@@ -175,6 +175,7 @@ fn cursor_pixel(row: usize, col: usize) -> u8 {
     ((CURSOR_ROWS[row] >> (col * 2)) & 0x3) as u8
 }
 
+
 static mut MOUSE: MouseState = MouseState {
     x: GRID_OFFSET_X + 20,
     y: GRID_OFFSET_Y + 20,

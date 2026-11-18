@@ -4,7 +4,7 @@
 use core::{
     arch::asm,
     panic::PanicInfo,
-    ptr::{addr_of_mut, read_volatile, write_volatile},
+    ptr::{read_volatile, write_volatile},
 };
 
 type ByteOpt = Option<u8>;
@@ -24,75 +24,8 @@ const UART_CR_UARTEN: u32 = 1 << 0;
 const UART_CR_TXE: u32 = 1 << 8;
 const UART_CR_RXE: u32 = 1 << 9;
 
-const MBOX_BASE: usize = 0x0000_0010_7c01_3880;
-const MBOX_READ: usize = MBOX_BASE + 0x00;
-const MBOX_STATUS: usize = MBOX_BASE + 0x18;
-const MBOX_WRITE: usize = MBOX_BASE + 0x20;
-const MBOX_FULL: u32 = 0x8000_0000;
-const MBOX_EMPTY: u32 = 0x4000_0000;
-const MBOX_CH_PROP: u32 = 8;
-
-const REQ_W: u32 = 1920;
-const REQ_H: u32 = 1080;
-
-#[repr(C, align(64))]
-struct FbMailboxMsg {
-    size: u32,
-    code: u32,
-    phys_tag: u32,
-    phys_buf_size: u32,
-    phys_req_size: u32,
-    phys_w: u32,
-    phys_h: u32,
-    virt_tag: u32,
-    virt_buf_size: u32,
-    virt_req_size: u32,
-    virt_w: u32,
-    virt_h: u32,
-    depth_tag: u32,
-    depth_buf_size: u32,
-    depth_req_size: u32,
-    depth: u32,
-    alloc_tag: u32,
-    alloc_buf_size: u32,
-    alloc_req_size: u32,
-    fb_addr: u32,
-    fb_size: u32,
-    pitch_tag: u32,
-    pitch_buf_size: u32,
-    pitch_req_size: u32,
-    pitch_bytes: u32,
-    end_tag: u32,
-}
-
-static mut MBOX_BUF: FbMailboxMsg = FbMailboxMsg {
-    size: 104,
-    code: 0,
-    phys_tag: 0x0004_8003,
-    phys_buf_size: 8,
-    phys_req_size: 8,
-    phys_w: REQ_W,
-    phys_h: REQ_H,
-    virt_tag: 0x0004_8004,
-    virt_buf_size: 8,
-    virt_req_size: 8,
-    virt_w: REQ_W,
-    virt_h: REQ_H,
-    depth_tag: 0x0004_8005,
-    depth_buf_size: 4,
-    depth_req_size: 4,
-    depth: 32,
-    alloc_tag: 0x0004_0001,
-    alloc_buf_size: 8,
-    alloc_req_size: 4,
-    fb_addr: 16,
-    fb_size: 0,
-    pitch_tag: 0x0004_0008,
-    pitch_buf_size: 4,
-    pitch_req_size: 0,
-    pitch_bytes: 0,
-    end_tag: 0,
-};
+const SCREEN_W: usize = 1920;
+const SCREEN_H: usize = 1080;
 
 struct HdmiConsole {
     fb: FbPtr,
@@ -105,9 +38,9 @@ struct HdmiConsole {
 
 static mut CONSOLE: HdmiConsole = HdmiConsole {
     fb: core::ptr::null_mut(),
-    width: REQ_W as usize,
-    height: REQ_H as usize,
-    pitch_pixels: REQ_W as usize,
+    width: SCREEN_W,
+    height: SCREEN_H,
+    pitch_pixels: SCREEN_W,
     cursor_x: 16,
     cursor_y: 16,
 };
@@ -185,17 +118,6 @@ static mut MOUSE: MouseState = MouseState {
     save_under: [[0; CURSOR_W]; CURSOR_H],
 };
 
-unsafe fn dcache_clean_invalidate_range(start: usize, len: usize) {
-    let line_size = 64usize;
-    let mut addr = start & !(line_size - 1);
-    let end = start + len;
-    while addr < end {
-        asm!("dc civac, {}", in(reg) addr, options(nostack));
-        addr += line_size;
-    }
-    asm!("dsb sy", options(nostack));
-}
-
 unsafe fn dcache_clean_range(start: usize, len: usize) {
     let line_size = 64usize;
     let mut addr = start & !(line_size - 1);
@@ -233,55 +155,34 @@ fn hdmi_init() {
         MOUSE.x = EDITOR.grid_x + 20;
         MOUSE.y = EDITOR.grid_y + 20;
 
-        // Clear boot screen to black
-        fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
-    }
-}
-
-
-        dcache_clean_invalidate_range(msg_addr, msg_len);
-
-        let code = read_volatile(&(*msg_ptr).code);
-        let fb_addr = read_volatile(&(*msg_ptr).fb_addr);
-        let pitch_bytes = read_volatile(&(*msg_ptr).pitch_bytes);
-        let actual_w = read_volatile(&(*msg_ptr).phys_w);
-        let actual_h = read_volatile(&(*msg_ptr).phys_h);
-
-        uart_write_uart_only("[HDMI] MBOX code=");
-        uart_write_hex32(code);
-        uart_write_uart_only(" fb=");
-        uart_write_hex32(fb_addr);
-        uart_write_uart_only(" pitch=");
-        uart_write_hex32(pitch_bytes);
-        uart_write_uart_only(" w=");
-        uart_write_hex32(actual_w);
-        uart_write_uart_only(" h=");
-        uart_write_hex32(actual_h);
-        uart_write_uart_only("\r\n");
-
-fn hdmi_init() {
-    unsafe {
-        // RPi 5 bootloader already initialized FB0: 1920x1080, stride 7680 (1920 px), base 0x3f400000
-        CONSOLE.fb = 0x3f40_0000 as FbPtr;
-        CONSOLE.width = 1920;
-        CONSOLE.height = 1080;
-        CONSOLE.pitch_pixels = 1920;
-
-        let grid_w = GRID_COLS * BOX_SIZE;
-        let grid_h = GRID_ROWS * BOX_SIZE;
-        EDITOR.grid_x = (CONSOLE.width - grid_w) / 2;
-        EDITOR.grid_y = (CONSOLE.height - grid_h - 80) / 2;
-        EDITOR.palette_y = EDITOR.grid_y + grid_h + 24;
-        MOUSE.x = EDITOR.grid_x + 20;
-        MOUSE.y = EDITOR.grid_y + 20;
-
-        // Clear boot screen to black
         fb_fill_rect(0, 0, CONSOLE.width, CONSOLE.height, 0x0000_0000);
     }
 }
 
 unsafe fn mouse_hide() {
-} {
+    if !MOUSE.visible || CONSOLE.fb.is_null() {
+        return;
+    }
+    for row in 0..CURSOR_H {
+        let py = MOUSE.y + row;
+        if py >= CONSOLE.height {
+            break;
+        }
+        let row_ptr = CONSOLE.fb.add(py * CONSOLE.pitch_pixels + MOUSE.x);
+        for col in 0..CURSOR_W {
+            if MOUSE.x + col >= CONSOLE.width {
+                break;
+            }
+            if cursor_pixel(row, col) != 0 {
+                write_volatile(row_ptr.add(col), MOUSE.save_under[row][col]);
+            }
+        }
+        dcache_clean_range(row_ptr as usize, CURSOR_W * 4);
+    }
+    MOUSE.visible = false;
+}
+
+unsafe fn mouse_show() {
     if MOUSE.visible || CONSOLE.fb.is_null() {
         return;
     }
@@ -345,126 +246,137 @@ unsafe fn draw_pixel_box(col: usize, row: usize) {
     fb_fill_rect(px, py, BOX_SIZE, BOX_SIZE, 0x0033_3333);
     fb_fill_rect(px + 2, py + 2, BOX_SIZE - 4, BOX_SIZE - 4, fill_color);
 }
+
 unsafe fn draw_palette_bar() {
-for (i, &color) in PALETTE.iter().enumerate() {
-let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
-let border = if EDITOR.selected_color == i {
-0x00FF_FFFF
-} else {
-0x0044_4444
-};
-fb_fill_rect(bx, EDITOR.palette_y, BOX_SIZE, BOX_SIZE, border);
-fb_fill_rect(bx + 4, EDITOR.palette_y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
+    for (i, &color) in PALETTE.iter().enumerate() {
+        let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
+        let border = if EDITOR.selected_color == i {
+            0x00FF_FFFF
+        } else {
+            0x0044_4444
+        };
+        fb_fill_rect(bx, EDITOR.palette_y, BOX_SIZE, BOX_SIZE, border);
+        fb_fill_rect(bx + 4, EDITOR.palette_y + 4, BOX_SIZE - 8, BOX_SIZE - 8, color);
+    }
 }
-}
+
 unsafe fn draw_entire_grid() {
-mouse_hide();
-for r in 0..GRID_ROWS {
-for c in 0..GRID_COLS {
-draw_pixel_box(c, r);
+    mouse_hide();
+    for r in 0..GRID_ROWS {
+        for c in 0..GRID_COLS {
+            draw_pixel_box(c, r);
+        }
+    }
+    draw_palette_bar();
+    mouse_show();
 }
-}
-draw_palette_bar();
-mouse_show();
-}
+
 unsafe fn handle_mouse_click() {
-let mx = MOUSE.x;
-let my = MOUSE.y;
-let grid_w = GRID_COLS * BOX_SIZE;
-let grid_h = GRID_ROWS * BOX_SIZE;
-if mx >= EDITOR.grid_x
-&& mx < EDITOR.grid_x + grid_w
-&& my >= EDITOR.grid_y
-&& my < EDITOR.grid_y + grid_h
-{
-let col = (mx - EDITOR.grid_x) / BOX_SIZE;
-let row = (my - EDITOR.grid_y) / BOX_SIZE;
-mouse_hide();
-if EDITOR.cells[row][col] == EDITOR.selected_color {
-EDITOR.cells[row][col] = 0;
-} else {
-EDITOR.cells[row][col] = EDITOR.selected_color;
+    let mx = MOUSE.x;
+    let my = MOUSE.y;
+
+    let grid_w = GRID_COLS * BOX_SIZE;
+    let grid_h = GRID_ROWS * BOX_SIZE;
+    if mx >= EDITOR.grid_x
+        && mx < EDITOR.grid_x + grid_w
+        && my >= EDITOR.grid_y
+        && my < EDITOR.grid_y + grid_h
+    {
+        let col = (mx - EDITOR.grid_x) / BOX_SIZE;
+        let row = (my - EDITOR.grid_y) / BOX_SIZE;
+
+        mouse_hide();
+        if EDITOR.cells[row][col] == EDITOR.selected_color {
+            EDITOR.cells[row][col] = 0;
+        } else {
+            EDITOR.cells[row][col] = EDITOR.selected_color;
+        }
+        draw_pixel_box(col, row);
+        mouse_show();
+        return;
+    }
+
+    if my >= EDITOR.palette_y && my < EDITOR.palette_y + BOX_SIZE {
+        for i in 0..PALETTE.len() {
+            let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
+            if mx >= bx && mx < bx + BOX_SIZE {
+                mouse_hide();
+                EDITOR.selected_color = i;
+                draw_palette_bar();
+                mouse_show();
+                return;
+            }
+        }
+    }
 }
-draw_pixel_box(col, row);
-mouse_show();
-return;
-}
-if my >= EDITOR.palette_y && my < EDITOR.palette_y + BOX_SIZE {
-for i in 0..PALETTE.len() {
-let bx = EDITOR.grid_x + i * (BOX_SIZE + 8);
-if mx >= bx && mx < bx + BOX_SIZE {
-mouse_hide();
-EDITOR.selected_color = i;
-draw_palette_bar();
-mouse_show();
-return;
-}
-}
-}
-}
+
 fn uart_write_hex32(val: u32) {
-const HEX: &[u8; 16] = b"0123456789ABCDEF";
-uart_write_uart_only("0x");
-for shift in (0..8).rev() {
-let nibble = ((val >> (shift * 4)) & 0xF) as usize;
-uart_write_byte_uart_only(HEX[nibble]);
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    uart_write_uart_only("0x");
+    for shift in (0..8).rev() {
+        let nibble = ((val >> (shift * 4)) & 0xF) as usize;
+        uart_write_byte_uart_only(HEX[nibble]);
+    }
 }
-}
+
 unsafe fn export_sprite_to_uart() {
-uart_write_uart_only("\r\n// --- Exported 16x16 Sprite ---\r\n");
-uart_write_uart_only("const SPRITE: [[u32; 16]; 16] = [\r\n");
-for r in 0..GRID_ROWS {
-uart_write_uart_only("    [");
-for c in 0..GRID_COLS {
-let color = PALETTE[EDITOR.cells[r][c]];
-uart_write_hex32(color);
-if c + 1 < GRID_COLS {
-uart_write_uart_only(", ");
+    uart_write_uart_only("\r\n// --- Exported 16x16 Sprite ---\r\n");
+    uart_write_uart_only("const SPRITE: [[u32; 16]; 16] = [\r\n");
+    for r in 0..GRID_ROWS {
+        uart_write_uart_only("    [");
+        for c in 0..GRID_COLS {
+            let color = PALETTE[EDITOR.cells[r][c]];
+            uart_write_hex32(color);
+            if c + 1 < GRID_COLS {
+                uart_write_uart_only(", ");
+            }
+        }
+        uart_write_uart_only("],\r\n");
+    }
+    uart_write_uart_only("];\r\n");
 }
-}
-uart_write_uart_only("],\r\n");
-}
-uart_write_uart_only("];\r\n");
-}
+
 unsafe fn editor_handle_input(byte: u8) {
-match byte {
-b'w' | b'W' | b'A' => mouse_move(0, -MOUSE_STEP),
-b's' | b'S' | b'B' => mouse_move(0, MOUSE_STEP),
-b'a' | b'D' => mouse_move(-MOUSE_STEP, 0),
-b'd' | b'C' => mouse_move(MOUSE_STEP, 0),
-b' ' | b'\r' | b'\n' => handle_mouse_click(),
-b'1'..=b'8' => {
-mouse_hide();
-EDITOR.selected_color = (byte - b'1') as usize;
-draw_palette_bar();
-mouse_show();
+    match byte {
+        b'w' | b'W' | b'A' => mouse_move(0, -MOUSE_STEP),
+        b's' | b'S' | b'B' => mouse_move(0, MOUSE_STEP),
+        b'a' | b'D' => mouse_move(-MOUSE_STEP, 0),
+        b'd' | b'C' => mouse_move(MOUSE_STEP, 0),
+        b' ' | b'\r' | b'\n' => handle_mouse_click(),
+        b'1'..=b'8' => {
+            mouse_hide();
+            EDITOR.selected_color = (byte - b'1') as usize;
+            draw_palette_bar();
+            mouse_show();
+        }
+        b'c' => {
+            EDITOR.cells = [[0; GRID_COLS]; GRID_ROWS];
+            draw_entire_grid();
+        }
+        b'e' | b'E' => export_sprite_to_uart(),
+        _ => {}
+    }
 }
-b'c' => {
-EDITOR.cells = [[0; GRID_COLS]; GRID_ROWS];
-draw_entire_grid();
-}
-b'e' | b'E' => export_sprite_to_uart(),
-_ => {}
-}
-}
+
 fn hdmi_draw_char(c: u8) {
-unsafe {
-if CONSOLE.fb.is_null() {
-return;
-}
-if c == b'\r' {
-CONSOLE.cursor_x = 16;
-return;
-}
-if c == b'\n' {
-CONSOLE.cursor_x = 16;
-CONSOLE.cursor_y += 16;
-if CONSOLE.cursor_y + 16 >= CONSOLE.height {
-CONSOLE.cursor_y = 16;
-}
-return;
-}
-let glyph = get_glyph_8x8(c);
+    unsafe {
+        if CONSOLE.fb.is_null() {
+            return;
+        }
+        if c == b'\r' {
+            CONSOLE.cursor_x = 16;
+            return;
+        }
+        if c == b'\n' {
+            CONSOLE.cursor_x = 16;
+            CONSOLE.cursor_y += 16;
+            if CONSOLE.cursor_y + 16 >= CONSOLE.height {
+                CONSOLE.cursor_y = 16;
+            }
+            return;
+        }
+
+        let glyph = get_glyph_8x8(c);
 for (row, &bits) in glyph.iter().enumerate() {
 for col in 0..8 {
 let color = if (bits >> col) & 1 != 0 {

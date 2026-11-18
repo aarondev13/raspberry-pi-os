@@ -150,35 +150,29 @@ static mut EDITOR: PixelEditor = PixelEditor {
     selected_color: 2,
 };
 
-// --- Smooth Mouse Cursor State (12x16 Arrow Sprite) ---
-const CURSOR_W: usize = 12;
-const CURSOR_H: usize = 16;
-const MOUSE_STEP: isize = 12;
-
-// 0 = Transparent, 1 = Black Outline, 2 = White Fill
-const CURSOR_SPRITE: [[u8; CURSOR_W]; CURSOR_H] = [,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
- ,
+// Each row packs 12 pixels (2 bits per pixel: 0=Transparent, 1=Black, 2=White)
+const CURSOR_ROWS: [u32; CURSOR_H] = [
+    0x00000001,
+    0x00000009,
+    0x00000029,
+    0x000000A9,
+    0x000002A9,
+    0x00000AA9,
+    0x00002AA9,
+    0x0000AAA9,
+    0x0002AAA9,
+    0x000AAAA9,
+    0x0002AA99,
+    0x0000A6A9,
+    0x000291A9,
+    0x00029069,
+    0x000A4019,
+    0x00090001,
 ];
 
-struct MouseState {
-    x: usize,
-    y: usize,
-    visible: bool,
-    save_under: [[u32; CURSOR_W]; CURSOR_H],
+#[inline(always)]
+fn cursor_pixel(row: usize, col: usize) -> u8 {
+    ((CURSOR_ROWS[row] >> (col * 2)) & 0x3) as u8
 }
 
 static mut MOUSE: MouseState = MouseState {

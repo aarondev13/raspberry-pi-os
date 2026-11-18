@@ -11,7 +11,7 @@ use core::{
 type ByteOpt = Option<u8>;
 type FbPtr = *mut u32;
 
-const RP1_BASE: usize = 0x0000_001f_0000_0000;
+const RP1_BASE: usize = 0x0000_001c_0000_0000;
 const RP1_UART0_BASE: usize = RP1_BASE + 0x0003_0000;
 const UART_DR: usize = 0x00;
 const UART_FR: usize = 0x18;

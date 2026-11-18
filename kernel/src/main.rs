@@ -373,6 +373,7 @@ unsafe fn draw_palette_bar() {
 
 unsafe fn draw_entire_grid() {
     mouse_hide();
+
 for r in 0..GRID_ROWS {
 for c in 0..GRID_COLS {
 draw_pixel_box(c, r);
@@ -624,3 +625,4 @@ b'y' => [0x00, 0x00, 0x66, 0x66, 0x7C, 0x60, 0x3C, 0x00],
 _ => [0x7E, 0x42, 0x42, 0x42, 0x42, 0x42, 0x7E, 0x00],
 }
 }
+EOF

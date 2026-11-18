@@ -3,9 +3,13 @@
 
 use core::{
     arch::asm,
+    mem::size_of,
     panic::PanicInfo,
     ptr::{addr_of_mut, read_volatile, write_volatile},
 };
+
+type ByteOpt = Option<u8>;
+type FbPtr = *mut u32;
 
 const RP1_BASE: usize = 0x0000_001f_0000_0000;
 const RP1_UART0_BASE: usize = RP1_BASE + 0x0003_0000;
@@ -73,7 +77,7 @@ struct FbMailboxMsg {
 }
 
 static mut MBOX_BUF: FbMailboxMsg = FbMailboxMsg {
-    size: core::mem::size_of::<FbMailboxMsg>() as u32,
+    size: 104,
     code: 0,
     phys_tag: 0x0004_8003,
     phys_buf_size: 8,
@@ -102,7 +106,7 @@ static mut MBOX_BUF: FbMailboxMsg = FbMailboxMsg {
 };
 
 struct HdmiConsole {
-    fb: *mut u32,
+    fb: FbPtr,
     pitch_pixels: usize,
     cursor_x: usize,
     cursor_y: usize,
@@ -237,7 +241,7 @@ fn uart_init() {
 fn hdmi_init() {
     let msg_ptr = addr_of_mut!(MBOX_BUF);
     let msg_addr = msg_ptr as usize;
-    let msg_len = core::mem::size_of::<FbMailboxMsg>();
+    let msg_len = size_of::<FbMailboxMsg>();
 
     unsafe {
         dcache_clean_invalidate_range(msg_addr, msg_len);
@@ -260,7 +264,7 @@ fn hdmi_init() {
         let pitch_bytes = read_volatile(&(*msg_ptr).pitch_bytes);
 
         if code == 0x8000_0000 && fb_addr != 0 {
-            let phys_fb = (fb_addr & 0x3FFF_FFFF) as *mut u32;
+            let phys_fb = (fb_addr & 0x3FFF_FFFF) as FbPtr;
             CONSOLE.fb = phys_fb;
             if pitch_bytes > 0 {
                 CONSOLE.pitch_pixels = (pitch_bytes / 4) as usize;
@@ -530,7 +534,7 @@ for byte in s.bytes() {
 uart_write_byte(byte);
 }
 }
-fn uart_try_read_byte() -> Option {
+fn uart_try_read_byte() -> ByteOpt {
 unsafe {
 if (read_volatile((RP1_UART0_BASE + UART_FR) as *const u32) & UART_FR_RXFE) != 0 {
 None
